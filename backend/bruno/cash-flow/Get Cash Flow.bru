@@ -1,0 +1,21 @@
+meta {
+  name: Get Cash Flow
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/api/v1/cash-flow?accountId={{cashAccountId}}&from=2026-09-01&to=2026-09-30
+  body: none
+  auth: none
+}
+
+params:query {
+  accountId: {{cashAccountId}}
+  from: 2026-09-01
+  to: 2026-09-30
+}
+
+headers {
+  Authorization: Bearer {{authToken}}
+}

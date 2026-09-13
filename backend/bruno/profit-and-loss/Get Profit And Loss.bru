@@ -1,0 +1,20 @@
+meta {
+  name: Get Profit And Loss
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/api/v1/profit-and-loss?from=2026-09-01&to=2026-09-30
+  body: none
+  auth: none
+}
+
+params:query {
+  from: 2026-09-01
+  to: 2026-09-30
+}
+
+headers {
+  Authorization: Bearer {{authToken}}
+}
