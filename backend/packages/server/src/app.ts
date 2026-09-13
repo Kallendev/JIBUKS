@@ -25,6 +25,7 @@ import { creditSalesRouter } from "./modules/creditSales/routes.js";
 import { cashSalesRouter } from "./modules/cashSales/routes.js";
 import { billsRouter } from "./modules/bills/routes.js";
 import { chequesRouter } from "./modules/cheques/routes.js";
+import { cashExpensesRouter } from "./modules/cashExpenses/routes.js";
 import { requireAuth0Token } from "./middleware/auth0.js";
 
 export function createApp(): Express {
@@ -65,6 +66,7 @@ export function createApp(): Express {
   app.use("/api/v1/cash-sales", cashSalesRouter);
   app.use("/api/v1/bills", billsRouter);
   app.use("/api/v1/cheques", chequesRouter);
+  app.use("/api/v1/cash-expenses", cashExpensesRouter);
 
   // Error handler must be registered LAST -- Express identifies it by its
   // four-parameter arity and only routes errors to middleware registered

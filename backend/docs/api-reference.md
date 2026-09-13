@@ -39,6 +39,7 @@ Live, interactive documentation (Swagger UI, "Try it out" against real data): `h
 - [7.10 Cash Sales](#710-cash-sales)
 - [7.11 Bills](#711-bills)
 - [7.12 Cheques](#712-cheques)
+- [7.13 Cash Expenses](#713-cash-expenses)
 
 ---
 
@@ -876,3 +877,49 @@ Clearing part of a supplier's bill, and paying an office-supplies expense direct
 ### Notes for consuming clients (Cheques)
 
 - This is a convenience wrapper, not a separate ledger concept — the resulting journal shows up in `GET /journals` and counts toward the tagged customer's/supplier's `balance_minor` exactly like a hand-built one.
+
+---
+
+## 7.13 Cash Expenses
+
+Base path: `/api/v1/cash-expenses` 
+
+Guided endpoint for an expense paid immediately — the immediate-cash mirror of [7.11 Bills](#711-bills), with no supplier/Accounts Payable involved at all. Standard double-entry for a cash expense:
+
+```
+Dr Expense/Asset line(s)   (net, one per line)
+Dr Input Tax               (if any tax — reclaimable)
+    Cr Cash/Bank           (gross = net + tax)
+```
+
+Together with [7.10 Cash Sales](#710-cash-sales), this completes the micro-cashbook's "record a sale + record an expense" pair.
+
+---
+
+### `POST /cash-expenses` 
+
+```json
+{
+  "clientUuid": "550e8400-e29b-41d4-a716-446655440104",
+  "paidAccountId": "1a2b3c4d-5e6f-4a10-9c1a-4a2b4c1a9c1a",
+  "date": "2026-09-15",
+  "currency": "KES",
+  "reference": "EXP-0001",
+  "lines": [
+    { "expenseAccountId": "f5f2cf8a-4f7d-4a10-a807-66deb74ac350", "amountMinor": 5000, "narrative": "Airtime" }
+  ],
+  "taxAccountId": "4f6c1a4a-2b4c-4c1a-9c1a-4a2b4c1a9c1c",
+  "taxAmountMinor": 800
+}
+```
+
+- `lines` takes one entry per expense line — at least one is required. `amountMinor` on each is the **net** amount; the server sums them for the debit side. Same line shape as [7.11 Bills](#711-bills)' `BillLine`.
+- `taxAccountId`/`taxAmountMinor` are both optional, but `taxAccountId` is **required** whenever `taxAmountMinor > 0` (`400 VALIDATION_ERROR` otherwise). `taxAccountId` should point at a recoverable-tax ASSET account (e.g. "Input VAT Recoverable"), not a liability.
+- There is no `supplierId` field here at all — a cash expense never touches a supplier's AP subledger, since payment happens on the spot.
+- The response is a full `Journal`, with `source: "CASHBOOK"` (the same source Cash Sale uses) and one line per: each expense line (debit), tax (debit, if present), and Cash/Bank (credit, for the gross total).
+- `description` defaults to `"Cash expense"` if omitted.
+- Posts through the exact same pipeline as `POST /journals` — period and account checks apply identically: `404 ACCOUNT_NOT_FOUND` / `PERIOD_NOT_FOUND`, `422 PERIOD_LOCKED` / `ACCOUNT_INACTIVE` / `ACCOUNT_NOT_POSTABLE`.
+
+### Notes for consuming clients (Cash Expenses)
+
+- This is a convenience wrapper, not a separate ledger concept — the resulting journal shows up in `GET /journals` exactly like a hand-built one.

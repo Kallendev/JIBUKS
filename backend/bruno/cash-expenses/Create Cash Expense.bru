@@ -1,0 +1,31 @@
+meta {
+  name: Create Cash Expense
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/api/v1/cash-expenses
+  body: json
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{authToken}}
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "clientUuid": "{{$randomUUID}}",
+    "paidAccountId": "{{cashAccountId}}",
+    "date": "2026-09-15",
+    "currency": "KES",
+    "reference": "EXP-0001",
+    "lines": [
+      { "expenseAccountId": "{{expenseAccountId}}", "amountMinor": 5000, "narrative": "Airtime" }
+    ],
+    "taxAccountId": "{{inputVatAccountId}}",
+    "taxAmountMinor": 800
+  }
+}

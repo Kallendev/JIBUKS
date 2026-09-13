@@ -121,6 +121,12 @@ tags:
       bookkeeping) — a payment OUT, whether clearing a supplier bill,
       paying an expense directly, or both in one cheque. Posts with source
       PAYMENT.
+  - name: Cash Expenses
+    description: >
+      Guided Cash Expense endpoint (the Cash Payments Book entry of manual
+      bookkeeping) — the immediate-cash mirror of Write Bill, with no
+      supplier/AP involved. Completes the micro-cashbook's sale + expense
+      pair alongside Cash Sales. Posts with source CASHBOOK.
 
 # Applied to every operation by default (see the per-operation overrides on
 # the two /onboarding operations, which relax this to "token only").
@@ -1205,6 +1211,59 @@ paths:
               schema:
                 $ref: '#/components/schemas/ProblemDetails'
 
+  # ── Cash Expenses ───────────────────────────────────────────────────
+  /cash-expenses:
+    post:
+      tags: [Cash Expenses]
+      summary: Record a cash expense (guided Cash Payments Book entry)
+      description: >
+        Builds and posts Dr each expense line (net) / Dr the input tax
+        account (if taxAmountMinor > 0) / Cr Cash/Bank (gross), through the
+        same posting pipeline as POST /journals (source CASHBOOK). The
+        immediate-cash mirror of Write Bill — payment happens on the spot,
+        so no supplier/Accounts Payable is involved.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCashExpenseRequest'
+            example:
+              clientUuid: "550e8400-e29b-41d4-a716-446655440104"
+              paidAccountId: "1a2b3c4d-5e6f-4a10-9c1a-4a2b4c1a9c1a"
+              date: "2026-09-15"
+              currency: "KES"
+              reference: "EXP-0001"
+              lines:
+                - expenseAccountId: "f5f2cf8a-4f7d-4a10-a807-66deb74ac350"
+                  amountMinor: 5000
+                  narrative: "Airtime"
+              taxAccountId: "4f6c1a4a-2b4c-4c1a-9c1a-4a2b4c1a9c1c"
+              taxAmountMinor: 800
+      responses:
+        '201':
+          description: The posted journal for this cash expense
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Journal'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: paidAccountId, an expenseAccountId or taxAccountId not found, or no period covers the given date
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        '422':
+          description: An account is inactive/non-postable, or the covering period is closed/locked
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+
 # ════════════════════════════════════════════════════════════════════
 # Components — reusable security schemes, parameters, schemas, responses
 # ════════════════════════════════════════════════════════════════════
@@ -1995,6 +2054,60 @@ components:
           minItems: 1
           items:
             $ref: '#/components/schemas/WriteChequeLine'
+
+    CreateCashExpenseRequest:
+      type: object
+      required: [clientUuid, paidAccountId, date, currency, lines]
+      description: >
+        Guided endpoint for the Cash Payments Book entry of a cash expense
+        — the immediate-cash mirror of Write Bill, with no supplier/Accounts
+        Payable involved. Composes a balanced journal — Dr each expense
+        line (net) / Dr the input tax account (if any) / Cr Cash/Bank
+        (gross) — and posts it through the same pipeline as POST /journals
+        (source CASHBOOK).
+      properties:
+        clientUuid:
+          type: string
+          format: uuid
+          description: Client-generated identity for the underlying journal.
+        branchId:
+          type: string
+          format: uuid
+          nullable: true
+        paidAccountId:
+          type: string
+          format: uuid
+          description: The Cash or Bank ASSET account credited for the gross (net + tax) amount.
+        date:
+          type: string
+          format: date
+          description: Must fall within an OPEN period for this tenant.
+        currency:
+          type: string
+          example: "KES"
+        reference:
+          type: string
+          example: "EXP-0001"
+        description:
+          type: string
+          description: Defaults to "Cash expense" when omitted.
+        lines:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/BillLine'
+        taxAccountId:
+          type: string
+          format: uuid
+          description: >
+            Recoverable-tax ASSET account debited for taxAmountMinor (e.g.
+            Input VAT Recoverable). Required whenever taxAmountMinor is
+            greater than zero.
+        taxAmountMinor:
+          type: integer
+          minimum: 0
+          default: 0
+          description: Total reclaimable tax across the expense, e.g. Kenyan VAT at 16% of the net total.
 
     # -- Shared error shape (RFC 7807, Section 9.1) --
     ProblemDetails:

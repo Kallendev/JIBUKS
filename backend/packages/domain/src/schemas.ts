@@ -288,6 +288,36 @@ export const createWriteChequeSchema = z.object({
 
 export type CreateWriteChequeDto = z.infer<typeof createWriteChequeSchema>;
 
+/**
+ * Guided Cash Expense (the Cash Payments Book entry of manual bookkeeping)
+ * -- the immediate-cash mirror of Write Bill: an expense paid on the spot,
+ * with no Accounts Payable/supplier subledger involved at all:
+ *   Dr Expense/Asset line(s) (net)
+ *   Dr Input Tax (if any -- reclaimable, unlike a sale's tax credit)
+ *     Cr Cash/Bank (gross)
+ * Completes the micro-cashbook's "record a sale + record an expense" pair
+ * alongside Cash Sale (FR-MIC-01). See packages/server/src/modules/cashExpenses.
+ */
+export const createCashExpenseSchema = z
+  .object({
+    clientUuid: uuidSchema,
+    branchId: uuidSchema.optional(),
+    paidAccountId: uuidSchema,
+    date: accountingDateSchema,
+    currency: currencySchema,
+    reference: z.string().max(100).optional(),
+    description: z.string().max(500).optional(),
+    lines: z.array(billLineSchema).min(1, "A cash expense needs at least one expense line"),
+    taxAccountId: uuidSchema.optional(),
+    taxAmountMinor: minorUnitsSchema.default(0),
+  })
+  .refine((r) => r.taxAmountMinor === 0 || r.taxAccountId !== undefined, {
+    message: "taxAccountId is required when taxAmountMinor is greater than zero",
+    path: ["taxAccountId"],
+  });
+
+export type CreateCashExpenseDto = z.infer<typeof createCashExpenseSchema>;
+
 export const createPeriodSchema = z.object({
   startDate: accountingDateSchema,
   endDate: accountingDateSchema,
