@@ -7,26 +7,9 @@
  */
 
 import { readAsTenant } from "@jibuks/db";
-import type { AccountRef, LedgerEntry } from "@jibuks/ledger";
+import type { LedgerEntry } from "@jibuks/ledger";
 
-/** Reads `tenants.base_currency` directly -- the same read-only pattern
- * invites/repository.ts and users/repository.ts already use to look up a
- * tenant's name. */
-export async function getTenantCurrency(tenantId: string): Promise<string | null> {
-  return readAsTenant(tenantId, async (client) => {
-    const result = await client.query<{ base_currency: string }>(`SELECT base_currency FROM tenants WHERE id = $1`, [
-      tenantId,
-    ]);
-    return result.rows[0]?.base_currency ?? null;
-  });
-}
-
-export async function listAccountRefs(tenantId: string): Promise<AccountRef[]> {
-  return readAsTenant(tenantId, async (client) => {
-    const result = await client.query<AccountRef>(`SELECT id, code, name, type FROM accounts`);
-    return result.rows;
-  });
-}
+export { getTenantCurrency, listAccountRefs } from "../reports/shared.js";
 
 /** Sums POSTED journal_lines per account, as of `asOf` if given (inclusive)
  * -- otherwise every POSTED journal ever recorded. DRAFT/PENDING_APPROVAL

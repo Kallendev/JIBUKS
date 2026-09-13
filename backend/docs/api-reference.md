@@ -41,6 +41,8 @@ Live, interactive documentation (Swagger UI, "Try it out" against real data): `h
 - [7.12 Cheques](#712-cheques)
 - [7.13 Cash Expenses](#713-cash-expenses)
 - [7.14 Trial Balance](#714-trial-balance)
+- [7.15 Profit & Loss](#715-profit--loss)
+- [7.16 Cash Flow](#716-cash-flow)
 
 ---
 
@@ -981,3 +983,101 @@ GET /trial-balance?as_of=2026-08-31
 ### Notes for consuming clients (Trial Balance)
 
 - This is the same aggregation `@jibuks/ledger`'s `buildTrialBalance` performs — the HTTP layer here just supplies it with this tenant's accounts and `POSTED` journal lines.
+
+---
+
+## 7.15 Profit & Loss
+
+Base path: `/api/v1/profit-and-loss` 
+
+Read-only report (FR-RPT-01): every `INCOME`/`EXPENSE` account's net activity within a date range, computed from `POSTED` journal lines only. Unlike Trial Balance's cumulative "as of" snapshot, P&L is only ever meaningful **for a period** — there's no sensible "P&L since inception."
+
+---
+
+### `GET /profit-and-loss` 
+
+```
+GET /profit-and-loss?from=2026-09-01&to=2026-09-30
+```
+
+```json
+{
+  "currency": "KES",
+  "from": "2026-09-01",
+  "to": "2026-09-30",
+  "income": [
+    { "accountId": "e5f2cf8a-4f7d-4a10-a807-66deb74ac350", "accountCode": "4000", "accountName": "Sales Revenue", "amountMinor": 100000 }
+  ],
+  "expenses": [
+    { "accountId": "f5f2cf8a-4f7d-4a10-a807-66deb74ac350", "accountCode": "5100", "accountName": "Rent", "amountMinor": 30000 }
+  ],
+  "totalIncomeMinor": 100000,
+  "totalExpenseMinor": 30000,
+  "netProfitMinor": 70000
+}
+```
+
+- `from` and `to` are both **required** query params (unlike Trial Balance's optional `as_of`) — `400 VALIDATION_ERROR` if either is missing or if `from` is after `to`.
+- Only `INCOME` and `EXPENSE` accounts ever appear — `ASSET`/`LIABILITY`/`EQUITY` accounts touched by the same journals (e.g. the Cash side of a cash sale) are deliberately left out, since they belong on a Balance Sheet, not a P&L.
+- `netProfitMinor` is `totalIncomeMinor - totalExpenseMinor` — negative when the period ran at a loss.
+- Same error codes as Trial Balance otherwise: `401 UNAUTHORIZED`.
+
+### Notes for consuming clients (Profit & Loss)
+
+- Internally this reuses the exact same `@jibuks/ledger` `buildTrialBalance` aggregation as Trial Balance, just scoped to journals dated within `[from, to]` instead of cumulative "as of" — then keeps only the P&L-type rows.
+
+---
+
+## 7.16 Cash Flow
+
+Base path: `/api/v1/cash-flow` 
+
+Read-only report (FR-RPT-01): opening balance, inflows, outflows and closing balance for the cash/bank account(s) you name, over a date range. **This is the simple, direct-method version** — net cash movement only, not a categorized Operating/Investing/Financing statement. Categorization needs every balance-sheet account tagged with a cash-flow category, which accounts don't carry yet; it's tracked as a later enhancement, not shipped in this cut.
+
+---
+
+### `GET /cash-flow` 
+
+```
+GET /cash-flow?accountId=1a2b3c4d-5e6f-4a10-9c1a-4a2b4c1a9c1a&from=2026-09-01&to=2026-09-30
+```
+
+Multiple accounts (e.g. Cash **and** Bank together) — repeat the param:
+```
+GET /cash-flow?accountId=<cash-id>&accountId=<bank-id>&from=2026-09-01&to=2026-09-30
+```
+
+```json
+{
+  "currency": "KES",
+  "from": "2026-09-01",
+  "to": "2026-09-30",
+  "accounts": [
+    {
+      "accountId": "1a2b3c4d-5e6f-4a10-9c1a-4a2b4c1a9c1a",
+      "accountCode": "1000",
+      "accountName": "Cash",
+      "openingBalanceMinor": 20000,
+      "closingBalanceMinor": 55000,
+      "inflowMinor": 50000,
+      "outflowMinor": 15000,
+      "netMinor": 35000
+    }
+  ],
+  "totalOpeningBalanceMinor": 20000,
+  "totalClosingBalanceMinor": 55000,
+  "totalInflowMinor": 50000,
+  "totalOutflowMinor": 15000,
+  "netCashFlowMinor": 35000
+}
+```
+
+- `accountId` is **required** — one or more account ids to treat as cash/cash-equivalents. Accounts carry no `is_cash_equivalent` flag of their own, so the caller names them explicitly, the same client-tells-the-server convention the guided endpoints already use (e.g. Cash Sale's `receivedAccountId`). `404 ACCOUNT_NOT_FOUND` if any given id doesn't belong to this tenant.
+- `from`/`to` behave exactly like [7.15 Profit & Loss](#715-profit--loss): both required, `400 VALIDATION_ERROR` if `from` is after `to`.
+- `openingBalanceMinor` is the account's balance from every `POSTED` journal dated **before** `from`; `closingBalanceMinor` is `openingBalanceMinor + inflowMinor - outflowMinor` (equivalently, the balance as of `to`).
+- `inflowMinor`/`outflowMinor` are the debit/credit totals within `[from, to]` inclusive — this assumes the named account(s) are debit-natured (`ASSET`-type, e.g. Cash/Bank), which is the only kind of account "cash flow" is meaningful for.
+- Same error codes otherwise: `401 UNAUTHORIZED`.
+
+### Notes for consuming clients (Cash Flow)
+
+- This is intentionally the simplest defensible Cash Flow shape for a micro-cashbook product — a categorized Operating/Investing/Financing statement is a known future enhancement, not an oversight.

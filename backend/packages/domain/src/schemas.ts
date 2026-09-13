@@ -318,6 +318,42 @@ export const createCashExpenseSchema = z
 
 export type CreateCashExpenseDto = z.infer<typeof createCashExpenseSchema>;
 
+/** Query params for GET /profit-and-loss (FR-RPT-01): a required date
+ * range, unlike Trial Balance's single as_of cutoff -- P&L is only ever
+ * meaningful "for a period", never cumulative since inception. */
+export const profitAndLossQuerySchema = z
+  .object({
+    from: accountingDateSchema,
+    to: accountingDateSchema,
+  })
+  .refine((r) => r.from <= r.to, {
+    message: "from must be on or before to",
+    path: ["to"],
+  });
+
+export type ProfitAndLossQueryDto = z.infer<typeof profitAndLossQuerySchema>;
+
+/** Query params for GET /cash-flow (FR-RPT-01): one or more Cash/Bank
+ * account ids plus a date range. Unlike Trial Balance/P&L, which discover
+ * every account with ledger activity on their own, Cash Flow needs to be
+ * told which account(s) count as cash/cash-equivalents -- the same
+ * client-tells-the-server-which-account convention the guided endpoints
+ * already use (e.g. Cash Sale's receivedAccountId), since accounts here
+ * carry no is-cash-equivalent flag of their own. */
+export const cashFlowQuerySchema = z
+  .object({
+    accountId: z.union([uuidSchema, z.array(uuidSchema).min(1)]),
+    from: accountingDateSchema,
+    to: accountingDateSchema,
+  })
+  .transform((r) => ({ ...r, accountId: Array.isArray(r.accountId) ? r.accountId : [r.accountId] }))
+  .refine((r) => r.from <= r.to, {
+    message: "from must be on or before to",
+    path: ["to"],
+  });
+
+export type CashFlowQueryDto = z.infer<typeof cashFlowQuerySchema>;
+
 export const createPeriodSchema = z.object({
   startDate: accountingDateSchema,
   endDate: accountingDateSchema,

@@ -132,6 +132,16 @@ tags:
       Read-only report (FR-TB-01): every account's net balance, on its
       natural side, computed from POSTED journal_lines only. Must always
       sum to zero under double entry (isBalanced).
+  - name: Profit & Loss
+    description: >
+      Read-only report (FR-RPT-01): net income/expense activity for a
+      date range, computed from POSTED journal_lines only.
+  - name: Cash Flow
+    description: >
+      Read-only report (FR-RPT-01): opening/closing balance and
+      inflows/outflows for the given cash/bank account(s) over a date
+      range. The simple, direct-method version — not yet categorized into
+      Operating/Investing/Financing.
 
 # Applied to every operation by default (see the per-operation overrides on
 # the two /onboarding operations, which relax this to "token only").
@@ -1294,6 +1304,65 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
+  # ── Profit & Loss ───────────────────────────────────────────────────
+  /profit-and-loss:
+    get:
+      tags: [Profit & Loss]
+      summary: Get the Profit & Loss report for a date range (FR-RPT-01)
+      description: >
+        Every INCOME/EXPENSE account's net activity within [from, to]
+        inclusive, computed from POSTED journal_lines only — ASSET,
+        LIABILITY and EQUITY accounts never appear here. netProfitMinor is
+        totalIncomeMinor minus totalExpenseMinor.
+      parameters:
+        - $ref: '#/components/parameters/FromDateQuery'
+        - $ref: '#/components/parameters/ToDateQuery'
+      responses:
+        '200':
+          description: The Profit & Loss report for the requested date range
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProfitAndLoss'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # ── Cash Flow ───────────────────────────────────────────────────────
+  /cash-flow:
+    get:
+      tags: [Cash Flow]
+      summary: Get the Cash Flow report for a date range (FR-RPT-01)
+      description: >
+        Opening balance, inflows, outflows and closing balance for the
+        given cash/bank account(s) within [from, to] inclusive, computed
+        from POSTED journal_lines only. The simple, direct-method version
+        — not categorized into Operating/Investing/Financing, which would
+        need every balance-sheet account tagged with a cash-flow category
+        (tracked as a later enhancement).
+      parameters:
+        - $ref: '#/components/parameters/CashFlowAccountIdQuery'
+        - $ref: '#/components/parameters/FromDateQuery'
+        - $ref: '#/components/parameters/ToDateQuery'
+      responses:
+        '200':
+          description: The Cash Flow report for the requested account(s) and date range
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CashFlow'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: One of the given accountId values was not found in this tenant
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+
 # ════════════════════════════════════════════════════════════════════
 # Components — reusable security schemes, parameters, schemas, responses
 # ════════════════════════════════════════════════════════════════════
@@ -1348,6 +1417,46 @@ components:
         type: string
         format: date
         example: "2026-08-31"
+    FromDateQuery:
+      name: from
+      in: query
+      required: true
+      description: Start of the report date range, inclusive. Shared by Profit & Loss and Cash Flow.
+      schema:
+        type: string
+        format: date
+        example: "2026-09-01"
+    ToDateQuery:
+      name: to
+      in: query
+      required: true
+      description: End of the report date range, inclusive. Must be on or after `from`. Shared by Profit & Loss and Cash Flow.
+      schema:
+        type: string
+        format: date
+        example: "2026-09-30"
+    CashFlowAccountIdQuery:
+      name: accountId
+      in: query
+      required: true
+      description: >
+        One or more account ids to treat as cash/cash-equivalents (e.g.
+        Cash, Bank) — repeat the param for more than one
+        (?accountId=...&accountId=...). Accounts carry no
+        is-cash-equivalent flag of their own, so the caller names them
+        explicitly, the same convention the guided endpoints use (e.g.
+        Cash Sale's receivedAccountId).
+      style: form
+      explode: true
+      schema:
+        oneOf:
+          - type: string
+            format: uuid
+          - type: array
+            items:
+              type: string
+              format: uuid
+            minItems: 1
     PeriodIdPath:
       name: id
       in: path
@@ -2177,6 +2286,85 @@ components:
           type: integer
         isBalanced:
           type: boolean
+
+    # -- Profit & Loss (FR-RPT-01) --
+    ProfitAndLossLine:
+      type: object
+      properties:
+        accountId: { type: string, format: uuid }
+        accountCode: { type: string }
+        accountName: { type: string }
+        amountMinor:
+          type: integer
+          description: Net activity on this account's natural side within [from, to].
+    ProfitAndLoss:
+      type: object
+      properties:
+        currency:
+          type: string
+          example: "KES"
+        from: { type: string, format: date }
+        to: { type: string, format: date }
+        income:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProfitAndLossLine'
+        expenses:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProfitAndLossLine'
+        totalIncomeMinor:
+          type: integer
+        totalExpenseMinor:
+          type: integer
+        netProfitMinor:
+          type: integer
+          description: totalIncomeMinor minus totalExpenseMinor. Negative when the period ran at a loss.
+
+    # -- Cash Flow (FR-RPT-01) --
+    CashFlowLine:
+      type: object
+      properties:
+        accountId: { type: string, format: uuid }
+        accountCode: { type: string }
+        accountName: { type: string }
+        openingBalanceMinor:
+          type: integer
+          description: Balance on this account from all POSTED journals dated before `from`.
+        closingBalanceMinor:
+          type: integer
+          description: openingBalanceMinor + inflowMinor - outflowMinor.
+        inflowMinor:
+          type: integer
+          description: Sum of debits within [from, to] inclusive.
+        outflowMinor:
+          type: integer
+          description: Sum of credits within [from, to] inclusive.
+        netMinor:
+          type: integer
+          description: inflowMinor minus outflowMinor.
+    CashFlow:
+      type: object
+      properties:
+        currency:
+          type: string
+          example: "KES"
+        from: { type: string, format: date }
+        to: { type: string, format: date }
+        accounts:
+          type: array
+          items:
+            $ref: '#/components/schemas/CashFlowLine'
+        totalOpeningBalanceMinor:
+          type: integer
+        totalClosingBalanceMinor:
+          type: integer
+        totalInflowMinor:
+          type: integer
+        totalOutflowMinor:
+          type: integer
+        netCashFlowMinor:
+          type: integer
 
     # -- Shared error shape (RFC 7807, Section 9.1) --
     ProblemDetails:
