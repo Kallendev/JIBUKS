@@ -1,0 +1,15 @@
+meta {
+  name: Get Trial Balance
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/api/v1/trial-balance
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{authToken}}
+}
