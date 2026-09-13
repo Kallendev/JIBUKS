@@ -40,6 +40,7 @@ Live, interactive documentation (Swagger UI, "Try it out" against real data): `h
 - [7.11 Bills](#711-bills)
 - [7.12 Cheques](#712-cheques)
 - [7.13 Cash Expenses](#713-cash-expenses)
+- [7.14 Trial Balance](#714-trial-balance)
 
 ---
 
@@ -923,3 +924,60 @@ Together with [7.10 Cash Sales](#710-cash-sales), this completes the micro-cashb
 ### Notes for consuming clients (Cash Expenses)
 
 - This is a convenience wrapper, not a separate ledger concept — the resulting journal shows up in `GET /journals` exactly like a hand-built one.
+
+---
+
+## 7.14 Trial Balance
+
+Base path: `/api/v1/trial-balance` 
+
+Read-only report (FR-TB-01): every account's net balance, on its natural side, computed from `POSTED` journal lines only. A listing of all account balances, which must sum to zero under double entry.
+
+---
+
+### `GET /trial-balance` 
+
+```
+GET /trial-balance
+GET /trial-balance?as_of=2026-08-31
+```
+
+```json
+{
+  "currency": "KES",
+  "rows": [
+    {
+      "accountId": "1a2b3c4d-5e6f-4a10-9c1a-4a2b4c1a9c1a",
+      "accountCode": "1000",
+      "accountName": "Cash",
+      "accountType": "ASSET",
+      "debitMinor": 100000,
+      "creditMinor": 30000,
+      "balanceMinor": 70000
+    },
+    {
+      "accountId": "e5f2cf8a-4f7d-4a10-a807-66deb74ac350",
+      "accountCode": "4000",
+      "accountName": "Sales Revenue",
+      "accountType": "INCOME",
+      "debitMinor": 0,
+      "creditMinor": 100000,
+      "balanceMinor": 100000
+    }
+  ],
+  "totalDebitMinor": 100000,
+  "totalCreditMinor": 100000,
+  "isBalanced": true
+}
+```
+
+- Takes the same optional `as_of` query parameter as [7.4 Accounts](#74-accounts)/[7.5 Customers](#75-customers)/[7.6 Suppliers](#76-suppliers) — a point-in-time cutoff, inclusive, on journal `date`. Omit it for the trial balance as of now.
+- `rows` is ordered by `accountCode` ascending, and only includes accounts with at least one `POSTED` journal line on or before `as_of` — an account with no ledger activity yet doesn't appear.
+- `balanceMinor` is the net presented on the account's **natural side**: debit for `ASSET`/`EXPENSE`, credit for `LIABILITY`/`EQUITY`/`INCOME` — never negative under normal use, since a natural-side balance going negative would mean the account was overdrawn past zero on its own side.
+- `totalDebitMinor` and `totalCreditMinor` are always equal (`isBalanced: true`) in practice — every journal that reaches `POSTED` already passed `@jibuks/ledger`'s balance check before insertion, and the database's own deferred trigger (DR-04) enforces it a second time independently.
+- There is no `POST`/write side to this endpoint — it is purely a report over data written by every other guided/manual posting endpoint.
+- Same error codes as elsewhere: `400 VALIDATION_ERROR` for a malformed `as_of`, `401 UNAUTHORIZED` with no token.
+
+### Notes for consuming clients (Trial Balance)
+
+- This is the same aggregation `@jibuks/ledger`'s `buildTrialBalance` performs — the HTTP layer here just supplies it with this tenant's accounts and `POSTED` journal lines.

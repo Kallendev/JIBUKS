@@ -127,6 +127,11 @@ tags:
       bookkeeping) — the immediate-cash mirror of Write Bill, with no
       supplier/AP involved. Completes the micro-cashbook's sale + expense
       pair alongside Cash Sales. Posts with source CASHBOOK.
+  - name: Trial Balance
+    description: >
+      Read-only report (FR-TB-01): every account's net balance, on its
+      natural side, computed from POSTED journal_lines only. Must always
+      sum to zero under double entry (isBalanced).
 
 # Applied to every operation by default (see the per-operation overrides on
 # the two /onboarding operations, which relax this to "token only").
@@ -1264,6 +1269,31 @@ paths:
               schema:
                 $ref: '#/components/schemas/ProblemDetails'
 
+  # ── Trial Balance ───────────────────────────────────────────────────
+  /trial-balance:
+    get:
+      tags: [Trial Balance]
+      summary: Get the trial balance (FR-TB-01)
+      description: >
+        Every account's net balance, on its natural side (debit for
+        ASSET/EXPENSE, credit for LIABILITY/EQUITY/INCOME), computed from
+        POSTED journal_lines only. Rows are ordered by account code.
+        totalDebitMinor and totalCreditMinor must always be equal
+        (isBalanced) under double entry.
+      parameters:
+        - $ref: '#/components/parameters/PartyAsOfQuery'
+      responses:
+        '200':
+          description: The trial balance as of now, or as of the given as_of date
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrialBalance'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
 # ════════════════════════════════════════════════════════════════════
 # Components — reusable security schemes, parameters, schemas, responses
 # ════════════════════════════════════════════════════════════════════
@@ -2108,6 +2138,45 @@ components:
           minimum: 0
           default: 0
           description: Total reclaimable tax across the expense, e.g. Kenyan VAT at 16% of the net total.
+
+    # -- Trial Balance (FR-TB-01) --
+    TrialBalanceRow:
+      type: object
+      properties:
+        accountId: { type: string, format: uuid }
+        accountCode: { type: string }
+        accountName: { type: string }
+        accountType:
+          type: string
+          enum: [ASSET, LIABILITY, EQUITY, INCOME, EXPENSE]
+        debitMinor:
+          type: integer
+          description: Total POSTED debits against this account.
+        creditMinor:
+          type: integer
+          description: Total POSTED credits against this account.
+        balanceMinor:
+          type: integer
+          description: Net presented on the account's natural side (debit for ASSET/EXPENSE, credit for LIABILITY/EQUITY/INCOME).
+    TrialBalance:
+      type: object
+      description: >
+        FR-TB-01: a listing of every account's net balance, which must sum
+        to zero under double entry (isBalanced).
+      properties:
+        currency:
+          type: string
+          example: "KES"
+        rows:
+          type: array
+          items:
+            $ref: '#/components/schemas/TrialBalanceRow'
+        totalDebitMinor:
+          type: integer
+        totalCreditMinor:
+          type: integer
+        isBalanced:
+          type: boolean
 
     # -- Shared error shape (RFC 7807, Section 9.1) --
     ProblemDetails:
